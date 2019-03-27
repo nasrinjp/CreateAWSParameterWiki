@@ -2,13 +2,10 @@
 
 from __future__ import print_function
 
-import json
 import os
-from base64 import b64decode
 from sys import argv
 
 import boto3
-import requests
 import aws_security
 import backlog
 
@@ -16,8 +13,8 @@ ec2 = boto3.resource('ec2')
 
 def parse_ec2_instances_markdown():
     content = ['# EC2インスタンス\n']
-    content.append('|Nameタグ|インスタンスID|インスタンスタイプ|プライベートIP|SG|')
-    content.append('|-|-|-|-|-|')
+    content.append('|Nameタグ|インスタンスID|インスタンスタイプ|プライベートIP|EBSボリューム|SG|')
+    content.append('|-|-|-|-|-|-|')
     for instance in ec2.instances.all():
         # Get tags
         try:
@@ -25,12 +22,25 @@ def parse_ec2_instances_markdown():
             name_tag_value = name_tag[0] if len(name_tag) else ' '
         except TypeError:
             name_tag_value = ' '
+        # Get EBS volume
+        volume_ids = [device_list['Ebs']['VolumeId'] for device_list in instance.block_device_mappings]
+        for volumeid in volume_ids:
+            volume_list = []
+            volume = ec2.Volume(volumeid)
+            try:
+                volume_name_tag = [tags['Value'] for tags in volume.tags if tags['Key'] == 'Name']
+                volume_name_tag_value = volume_name_tag[0] if len(volume_name_tag) else ' '
+            except TypeError:
+                volume_name_tag_value = ' '
+            volume_size = str(volume.size) + 'GiBs'
+            volume_list.append(volumeid + ' (' + volume_name_tag_value + '): ' + volume_size + '<br>')
+        volume_info = ''.join(volume_list)
         # Get security groups
         sg_names = [sg_list['GroupName'] for sg_list in instance.security_groups]
         sg_names.sort()
         sg_name = '<br>'.join(sg_names)
         # Create contents
-        content.append('|'+name_tag_value+'|'+instance.instance_id+'|'+instance.instance_type+'|'+instance.private_ip_address+'|'+sg_name+'|')
+        content.append('|'+name_tag_value+'|'+instance.instance_id+'|'+instance.instance_type+'|'+instance.private_ip_address+'|'+volume_info+'|'+sg_name+'|')
     return '\n'.join(content)
 
 def parse_security_group_markdown():
