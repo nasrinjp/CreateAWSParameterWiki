@@ -160,6 +160,30 @@ def parse_security_group_markdown():
         
     return '\n'.join(sg_markdown_content)
 
+def parse_vpc_markdown():
+    content = ['# VPC\n']
+    content.append('|Nameタグ|VPC ID|VPC CIDR|DHCP Options|DNS関連|テナンシー|')
+    content.append('|-|-|-|-|-|-|')
+    for vpc in ec2.vpcs.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in vpc.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Get VPC DNS attributes
+        vpc_dns = []
+        vpc_dns.append(
+            'EnableDnsSupport: '+
+            str(vpc.describe_attribute(Attribute='enableDnsSupport')['EnableDnsSupport']['Value']))
+        vpc_dns.append(
+            'EnableDnsHostnames: '+
+            str(vpc.describe_attribute(Attribute='enableDnsHostnames')['EnableDnsHostnames']['Value']))
+        vpc_dns_attributes = '<br>'.join(vpc_dns)
+        # Create contents
+        content.append('|'+name_tag_value+'|'+vpc.vpc_id+'|'+vpc.cidr_block+'|'+vpc.dhcp_options_id+'|'+vpc_dns_attributes+'|'+vpc.instance_tenancy+'|')
+    return '\n'.join(content)
+
 def lambda_handler(event, context):
     backlog_spaceid = aws_security.decrypt_text_by_kms(os.getenv('backlog_spaceid'))
     backlog_apikey = aws_security.decrypt_text_by_kms(os.getenv('backlog_apikey'))
@@ -171,10 +195,26 @@ def lambda_handler(event, context):
     )
     ec2_instances_markdown = parse_ec2_instances_markdown() + '\n\n' + parse_security_group_markdown()
     
-    # ec2&sg
+    # EC2&SG
     if ec2_instances_markdown != backlog.get_backlog_wiki_content(ec2_backlog_url):
         if not backlog.update_backlog_wiki(ec2_backlog_url, ec2_instances_markdown).ok:
-            print("Failed to update backlog wiki.")
-        print('Update completed successfully.')
+            print("Failed to update backlog EC2 wiki.")
+        print('EC2 wiki Update completed successfully.')
     else:
-        print('No differences found.')
+        print('No differences found between EC2 wiki and resources.')
+    
+    # VPC
+    backlog_vpc_wikiid_encrypted = os.getenv('vpc_backlog_wikiid')
+    if backlog_vpc_wikiid_encrypted is not None:
+        vpc_backlog_url = backlog.generate_backlog_wiki_url(
+            backlog_spaceid,
+            aws_security.decrypt_text_by_kms(backlog_vpc_wikiid_encrypted),
+            backlog_apikey
+        )
+        vpc_markdown = parse_vpc_markdown()
+        if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
+            if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
+                print("Failed to update backlog VPC wiki.")
+            print('VPC wiki update completed successfully.')
+        else:
+            print('No differences found between VPC wiki and resources.')

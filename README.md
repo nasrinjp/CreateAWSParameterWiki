@@ -29,6 +29,7 @@ Lambda環境変数で下記を設定します。
 backlog_spaceid：BacklogのスペースIDです。  
 backlog_apikey：BacklogのWikiに書き込むためのBacklogのapikeyです。  
 ec2_backlog_wikiid：EC2パラメータシートのWikiIDです。  
+vpc_backlog_wikiid：VPCパラメータシートのWikiIDです。(Option)  
 
 ### IAMロール
 下記のポリシーを付与したIAMロールを使用してください。  
