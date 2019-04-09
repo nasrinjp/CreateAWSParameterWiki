@@ -161,9 +161,7 @@ def parse_security_group_markdown():
     return '\n'.join(sg_markdown_content)
 
 def parse_vpc_markdown():
-    content = ['# VPC\n']
-    content.append('|Nameタグ|VPC ID|VPC CIDR|DHCP Options|DNS関連|テナンシー|')
-    content.append('|-|-|-|-|-|-|')
+    content = []
     for vpc in ec2.vpcs.all():
         # Get tags
         try:
@@ -181,7 +179,56 @@ def parse_vpc_markdown():
             str(vpc.describe_attribute(Attribute='enableDnsHostnames')['EnableDnsHostnames']['Value']))
         vpc_dns_attributes = '<br>'.join(vpc_dns)
         # Create contents
-        content.append('|'+name_tag_value+'|'+vpc.vpc_id+'|'+vpc.cidr_block+'|'+vpc.dhcp_options_id+'|'+vpc_dns_attributes+'|'+vpc.instance_tenancy+'|')
+        content.append('|' + name_tag_value + '|' + vpc.vpc_id + '|' + vpc.cidr_block + '|' + vpc.dhcp_options_id + '|' + vpc_dns_attributes + '|' + vpc.instance_tenancy + '|')
+    content.sort()
+    content.insert(0, '# VPC\n')
+    content.insert(1, '|Nameタグ|VPC ID|VPC CIDR|DHCP Options|DNS関連|テナンシー|')
+    content.insert(2, '|-|-|-|-|-|-|')
+    return '\n'.join(content)
+
+def parse_vpc_subnet_markdown():
+    content = []
+    for subnet in ec2.subnets.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in subnet.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Create contents
+        content.append('|' + name_tag_value + '|' + subnet.subnet_id + '|' + subnet.vpc_id + '|' + subnet.cidr_block + '|' + subnet.availability_zone + '|')
+    content.sort()
+    content.insert(0, '\n\n# サブネット\n')
+    content.insert(1, '|Nameタグ|Subnet ID|VPC ID|CIDR|AZ|')
+    content.insert(2, '|-|-|-|-|-|-|')
+    return '\n'.join(content)
+
+def parse_vpc_routetable_markdown():
+    content = []
+    for routetable in ec2.route_tables.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in routetable.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Get accociation attributes
+        subnet_ids = [rt_attribute.get('SubnetId') for rt_attribute in routetable.associations_attribute if rt_attribute.get('SubnetId') is not None]
+        associated_subnet = '<br>'.join(subnet_ids) if len(subnet_ids) else ' '
+        # Create contents
+        content.append('|' + name_tag_value + '|' + routetable.route_table_id + '|' + associated_subnet + '|||')
+        for attribute in routetable.routes_attribute:
+            if attribute.get('DestinationCidrBlock') is not None:
+                if attribute.get('GatewayId') is not None:
+                    content.append('| |||' + attribute.get('DestinationCidrBlock') + '|' + attribute.get('GatewayId')+ '|')
+                elif attribute.get('NatGatewayId') is not None:
+                    content.append('| |||' + attribute.get('DestinationCidrBlock') + '|' + attribute.get('NatGatewayId')+ '|')
+                elif attribute.get('VpcPeeringConnectionId') is not None:
+                    content.append('| |||' + attribute.get('DestinationCidrBlock') + '|' + attribute.get('VpcPeeringConnectionId')+ '|')
+    content.insert(0, '\n\n# ルートテーブル\n')
+    content.insert(1, '|Nameタグ|RouteTable ID|サブネット|||')
+    content.insert(2, '| |||宛先|ターゲット|')
+    content.insert(3, '|-|-|-|-|-|')
     return '\n'.join(content)
 
 def lambda_handler(event, context):
@@ -211,7 +258,9 @@ def lambda_handler(event, context):
             aws_security.decrypt_text_by_kms(backlog_vpc_wikiid_encrypted),
             backlog_apikey
         )
-        vpc_markdown = parse_vpc_markdown()
+        vpc_markdown = parse_vpc_markdown()\
+            + parse_vpc_subnet_markdown()\
+            + parse_vpc_routetable_markdown()
         if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
             if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
                 print("Failed to update backlog VPC wiki.")
