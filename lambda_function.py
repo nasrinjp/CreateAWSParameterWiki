@@ -229,6 +229,30 @@ def parse_dhcp_options_markdown():
     content.insert(2, '|-|-|-|')
     return '\n'.join(content)
 
+def parse_igw_markdown():
+    content = []
+    for igw in ec2.internet_gateways.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in igw.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Get VPC-ID
+        if len(igw.attachments) != 0:
+            for vpc in igw.attachments:
+                vpc_id = vpc.get('VpcId')
+        else:
+            vpc_id = ' '
+        # Create contents
+        content.append('|' + name_tag_value + '|' + igw.internet_gateway_id + '|' + vpc_id + '|')
+    content.sort()
+    content.insert(0, '\n\n# インターネットゲートウェイ\n')
+    content.insert(1, '|Nameタグ|IGW ID|VPC ID|')
+    content.insert(2, '|-|-|-|')
+    return '\n'.join(content) if len(content) != 3 else ''
+    #return '\n'.join(content)
+
 def parse_vpc_routetable_markdown():
     content = []
     for routetable in ec2.route_tables.all():
@@ -287,6 +311,7 @@ def lambda_handler(event, context):
         vpc_markdown = parse_vpc_markdown()\
             + parse_vpc_subnet_markdown()\
             + parse_dhcp_options_markdown()\
+            + parse_igw_markdown()\
             + parse_vpc_routetable_markdown()
         if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
             if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
