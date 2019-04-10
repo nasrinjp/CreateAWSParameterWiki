@@ -203,6 +203,32 @@ def parse_vpc_subnet_markdown():
     content.insert(2, '|-|-|-|-|-|-|')
     return '\n'.join(content)
 
+def parse_dhcp_options_markdown():
+    content = []
+    for dhcp_option in ec2.dhcp_options_sets.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in dhcp_option.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Get dhcp_configurations
+        key = []
+        for dhcp_option_conf in dhcp_option.dhcp_configurations:
+            conf_values = []
+            for value in dhcp_option_conf.get('Values'):
+                conf_values.append(value.get('Value'))
+            conf_value = ', '.join(conf_values)
+            key.append(dhcp_option_conf.get('Key') + ' = ' + conf_value)
+        config = '<br>'.join(key)
+        # Create contents
+        content.append('|' + name_tag_value + '|' + dhcp_option.dhcp_options_id + '|' + config + '|')
+    content.sort()
+    content.insert(0, '\n\n# DHCPオプションセット\n')
+    content.insert(1, '|Nameタグ|DHCPオプションセットID|オプション内容|')
+    content.insert(2, '|-|-|-|')
+    return '\n'.join(content)
+
 def parse_vpc_routetable_markdown():
     content = []
     for routetable in ec2.route_tables.all():
@@ -260,6 +286,7 @@ def lambda_handler(event, context):
         )
         vpc_markdown = parse_vpc_markdown()\
             + parse_vpc_subnet_markdown()\
+            + parse_dhcp_options_markdown()\
             + parse_vpc_routetable_markdown()
         if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
             if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
