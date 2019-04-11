@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+import json
 import os
 from sys import argv
 
@@ -251,7 +252,71 @@ def parse_igw_markdown():
     content.insert(1, '|Nameタグ|IGW ID|VPC ID|')
     content.insert(2, '|-|-|-|')
     return '\n'.join(content) if len(content) != 3 else ''
-    #return '\n'.join(content)
+
+def parse_vpc_peering_markdown():
+    content = []
+    for peering in ec2.vpc_peering_connections.all():
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in peering.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Create contents
+        requester_ownerid = peering.requester_vpc_info.get('OwnerId')
+        requester_vpcid = peering.requester_vpc_info.get('VpcId')
+        requester_region = peering.requester_vpc_info.get('Region')
+        requester_cidr = peering.requester_vpc_info.get('CidrBlock')
+        accepter_ownerid = peering.accepter_vpc_info.get('OwnerId')
+        accepter_vpcid = peering.accepter_vpc_info.get('VpcId')
+        accepter_region = peering.accepter_vpc_info.get('Region')
+        accepter_cidr = peering.accepter_vpc_info.get('CidrBlock')
+        content.append('|' + name_tag_value + '|' + peering.vpc_peering_connection_id + '|' \
+            + peering.status.get('Code') + '|' \
+            + 'AWSアカウント: ' + requester_ownerid + '<br>' \
+            + 'VPC ID: ' + requester_vpcid + '<br>' \
+            + 'VPCリージョン: ' + requester_region + '<br>' \
+            + 'CIDR: ' + requester_cidr + '|' \
+            + 'AWSアカウント: ' + accepter_ownerid + '<br>' \
+            + 'VPC ID: ' + accepter_vpcid + '<br>' \
+            + 'VPCリージョン: ' + accepter_region + '<br>' \
+            + 'CIDR: ' + accepter_cidr + '|' \
+        )
+    content.sort()
+    content.insert(0, '\n\n# VPCピアリング\n')
+    content.insert(1, '|Nameタグ|Peering ID|ステータス|リクエスタ情報|アクセプタ情報|')
+    content.insert(2, '|-|-|-|-|-|')
+    return '\n'.join(content) if len(content) != 3 else ''
+
+def parse_vpc_endpoint_markdown():
+    content = ['\n\n# VPCエンドポイント\n']
+    content_gateway = []
+    content_interface = []
+    client = boto3.client('ec2')
+    vpc_endpoint_list = client.describe_vpc_endpoints().get('VpcEndpoints')
+    for item in vpc_endpoint_list:
+        if item.get('VpcEndpointType') == 'Gateway':
+            content_gateway.append('|' + item.get('VpcEndpointId') + '|' \
+                + item.get('VpcId') + '|' \
+                + item.get('ServiceName') + '|' \
+                + '<br>'.join(item.get('RouteTableIds')) + '|' \
+                + json.dumps(json.loads(item.get('PolicyDocument')),indent=2).replace('\n','<br>').replace('  ','　') + '|'
+            )
+        elif item.get('VpcEndpointType') == 'Interface':
+            pass
+    content_gateway.sort()
+    content_gateway.insert(0, '\n## ゲートウェイエンドポイント\n')
+    content_gateway.insert(1, '|エンドポイントID|VPC ID|サービス名|ルートテーブルID|ポリシー|')
+    content_gateway.insert(2, '|-|-|-|-|-|')
+    content_interface.sort()
+    content_interface.insert(0, '\n## インターフェイスエンドポイント\n')
+    content_interface.insert(1, '|エンドポイントID|VPC ID|サービス名|ルートテーブルID|ポリシー|')
+    content_interface.insert(2, '|-|-|-|-|-|')
+    if len(content_gateway) != 3:
+        content += content_gateway
+    if len(content_interface) != 3:
+        content += content_interface
+    return '\n'.join(content) if len(content) != 1 else ''
 
 def parse_vpc_routetable_markdown():
     content = []
@@ -312,7 +377,9 @@ def lambda_handler(event, context):
             + parse_vpc_subnet_markdown()\
             + parse_dhcp_options_markdown()\
             + parse_igw_markdown()\
-            + parse_vpc_routetable_markdown()
+            + parse_vpc_peering_markdown()\
+            + parse_vpc_routetable_markdown()\
+            + parse_vpc_endpoint_markdown()
         if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
             if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
                 print("Failed to update backlog VPC wiki.")
