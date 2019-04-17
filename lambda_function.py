@@ -303,15 +303,34 @@ def parse_vpc_endpoint_markdown():
                 + json.dumps(json.loads(item.get('PolicyDocument')),indent=2).replace('\n','<br>').replace('  ','　') + '|'
             )
         elif item.get('VpcEndpointType') == 'Interface':
-            pass
+            dns_name_list = []
+            subnet_list = []
+            securitygroup_list = []
+            for dns_entry in item.get('DnsEntries'):
+                dns_name_list.append(dns_entry.get('DnsName'))
+            for subnet in item.get('SubnetIds'):
+                subnet_list.append(subnet)
+            for security_group in item.get('Groups'):
+                securitygroup_list.append(
+                    'SG_ID: ' + security_group.get('GroupId') \
+                    + '<br>SG_Name: ' + security_group.get('GroupName')
+                )
+            content_interface.append('|' + item.get('VpcEndpointId') + '|' \
+                + item.get('VpcId') + '|' \
+                + item.get('ServiceName') + '|' \
+                + '<br>'.join(dns_name_list) + '|' \
+                + '<br>'.join(subnet_list) + '|' \
+                + '<br>'.join(securitygroup_list) + '|' \
+                + str(item.get('PrivateDnsEnabled'))
+            )
     content_gateway.sort()
     content_gateway.insert(0, '\n## ゲートウェイエンドポイント\n')
     content_gateway.insert(1, '|エンドポイントID|VPC ID|サービス名|ルートテーブルID|ポリシー|')
     content_gateway.insert(2, '|-|-|-|-|-|')
     content_interface.sort()
     content_interface.insert(0, '\n## インターフェイスエンドポイント\n')
-    content_interface.insert(1, '|エンドポイントID|VPC ID|サービス名|ルートテーブルID|ポリシー|')
-    content_interface.insert(2, '|-|-|-|-|-|')
+    content_interface.insert(1, '|エンドポイントID|VPC ID|サービス名|DNS名|サブネット|セキュリティグループ|プライベートDNS|')
+    content_interface.insert(2, '|-|-|-|-|-|-|-|')
     if len(content_gateway) != 3:
         content += content_gateway
     if len(content_interface) != 3:
