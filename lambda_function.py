@@ -365,6 +365,68 @@ def parse_vpc_routetable_markdown():
     content.insert(3, '|-|-|-|-|-|')
     return '\n'.join(content)
 
+def parse_nacl_markdown():
+    content = []
+    for nacl in ec2.network_acls.all():
+        content_ingress = []
+        content_egress = []
+        # Get tags
+        try:
+            name_tag = [tags['Value'] for tags in nacl.tags if tags['Key'] == 'Name']
+            name_tag_value = name_tag[0] if len(name_tag) else ' '
+        except TypeError:
+            name_tag_value = ' '
+        # Get accociation attributes
+        subnet_ids = [nacl_association.get('SubnetId') for nacl_association in nacl.associations if nacl_association.get('SubnetId') is not None]
+        associated_subnet = '<br>'.join(subnet_ids) if len(subnet_ids) else ' '
+        # Create contents
+        content.append('|' + name_tag_value + '|' + nacl.network_acl_id + '|' + nacl.vpc_id + '|'+ associated_subnet +'||||')
+        for nacl_entry in nacl.entries:
+            if nacl_entry.get('Protocol') == '6':
+                protocol_name = 'TCP'
+            elif nacl_entry.get('Protocol') == '17':
+                protocol_name = 'UDP'
+            elif nacl_entry.get('Protocol') == '1':
+                protocol_name = 'ICMP'
+            elif nacl_entry.get('Protocol') == '-1':
+                protocol_name = 'ALL'
+            else:
+                protocol_name = nacl_entry.get('Protocol')
+            if nacl_entry.get('PortRange') is None:
+                port = 'ALL'
+            elif nacl_entry.get('PortRange').get('From') == nacl_entry.get('PortRange').get('To'):
+                port = str(nacl_entry.get('PortRange').get('From'))
+            else:
+                port = str(nacl_entry.get('PortRange').get('From')) + ' - ' \
+                    + str(nacl_entry.get('PortRange').get('To'))
+            if nacl_entry.get('Egress'):
+                content_egress.append('| ||' + str(nacl_entry.get('RuleNumber')).zfill(5) + '|' \
+                    + protocol_name + '|' \
+                    + port + '|' \
+                    + nacl_entry.get('CidrBlock') + '|' \
+                    + nacl_entry.get('RuleAction') + '|'
+                )
+            else:
+                content_ingress.append('| ||' + str(nacl_entry.get('RuleNumber')).zfill(5) + '|' \
+                    + protocol_name + '|' \
+                    + port + '|' \
+                    + nacl_entry.get('CidrBlock') + '|' \
+                    + nacl_entry.get('RuleAction') + '|'
+                )
+        content_ingress.sort()
+        content_ingress.insert(0, '| |インバウンドルール||||||')
+        content_egress.sort()
+        content_egress.insert(0, '| |アウトバウンドルール||||||')
+        if len(content_ingress) != 1:
+            content += content_ingress
+        if len(content_egress) != 1:
+            content += content_egress
+    content.insert(0, '\n\n# ネットワークACL\n')
+    content.insert(1, '|Nameタグ|Network ACL ID|VPC ID|適用サブネットID||||')
+    content.insert(2, '| ||Rule ID|Protocol|Port Range|CIDR|Action|')
+    content.insert(3, '|-|-|-|-|-|-|-|')
+    return '\n'.join(content)
+
 def lambda_handler(event, context):
     backlog_spaceid = aws_security.decrypt_text_by_kms(os.getenv('backlog_spaceid'))
     backlog_apikey = aws_security.decrypt_text_by_kms(os.getenv('backlog_apikey'))
@@ -398,7 +460,8 @@ def lambda_handler(event, context):
             + parse_igw_markdown()\
             + parse_vpc_peering_markdown()\
             + parse_vpc_routetable_markdown()\
-            + parse_vpc_endpoint_markdown()
+            + parse_vpc_endpoint_markdown()\
+            + parse_nacl_markdown()
         if vpc_markdown != backlog.get_backlog_wiki_content(vpc_backlog_url):
             if not backlog.update_backlog_wiki(vpc_backlog_url, vpc_markdown).ok:
                 print("Failed to update backlog VPC wiki.")
