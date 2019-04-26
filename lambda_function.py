@@ -17,6 +17,9 @@ def parse_ec2_instances_markdown():
     content.append('|Nameタグ|インスタンスID|インスタンスタイプ|プライベートIP|EBSボリューム|SG|')
     content.append('|-|-|-|-|-|-|')
     for instance in ec2.instances.all():
+        # If instance status is terminated then skip.
+        if instance.state.get('Code') == 48:
+            continue
         # Get tags
         try:
             name_tag = [tags['Value'] for tags in instance.tags if tags['Key'] == 'Name']
@@ -25,8 +28,8 @@ def parse_ec2_instances_markdown():
             name_tag_value = ' '
         # Get EBS volume
         volume_ids = [device_list['Ebs']['VolumeId'] for device_list in instance.block_device_mappings]
+        volume_list = []
         for volumeid in volume_ids:
-            volume_list = []
             volume = ec2.Volume(volumeid)
             try:
                 volume_name_tag = [tags['Value'] for tags in volume.tags if tags['Key'] == 'Name']
